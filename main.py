@@ -213,9 +213,9 @@ class Cactus(pygame.sprite.Sprite):
 
         if self.rect.right < 0:
             self.kill()
+
 # This defines a pyteradactol! These move so it establishes that along with a
 # random height.
-
 class Ptera(pygame.sprite.Sprite):
     def __init__(self,speed=5,sizex=-1,sizey=-1):
         pygame.sprite.Sprite.__init__(self,self.containers)
@@ -312,6 +312,7 @@ class Scoreboard():
 """This defines the intro screen. It has some backup messages if the game
 won't load. Next, it defines the keys that make the dino jump and duck.
 Finally, this part starts the game when you press jump!"""
+
 def introscreen():
     temp_dino = Dino(44,47)
     temp_dino.isBlinking = True
@@ -394,7 +395,7 @@ def gameplay():
     HI_rect.top = height*0.1
     HI_rect.left = width*0.73
 
-# Here, the code is for establishing jumping and ducking for the dino.
+# THIS IS THE MAIN GAME LOOP
     while not gameQuit:
         while startMenu:
             pass

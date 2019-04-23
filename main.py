@@ -27,8 +27,40 @@ jump_sound = pygame.mixer.Sound('sprites/jump.wav')
 die_sound = pygame.mixer.Sound('sprites/die.wav')
 checkPoint_sound = pygame.mixer.Sound('sprites/checkPoint.wav')
 
-# Next, it pulls the sprites to be able to construct the image
-# we see on screen.
+
+
+"""
+This is the Q-Learning Portion of the code.
+Here, we define Q-learning-specific functions to be implemented
+further down
+"""
+def get_state(playerDino, cacti, pteras):
+    '''
+    Compiles state information needed to make computations
+    Input: Dino Sprite rect, cacti sprite group, pteras sprite group
+    Output: vector/list/dict (need to pick one) that holds state information
+    Regardless of datatype, state has the following format:
+    [is_airborne (binary),
+    is_ducked (binary),
+    distance to nearest cactus,
+    distance to second nearest cactus,
+    distance to pteradactyl]
+    '''
+
+
+    state = {'cact_0_dist' : 999, 'cact_1_dist' : 999, 'ptera_dist' : 999} #init state as a dictionary
+
+    if len(cacti) != 0:
+        for c, cactus in enumerate(cacti):
+            state['cact_{}_dist'.format(c)] = cactus.rect.left - playerDino.rect.right
+    if len(pteras) != 0:
+        for d, dactyl in enumerate(pteras):
+            state['ptera_dist'] = dactyl.rect.left - playerDino.rect.right
+
+    state['is_airborne'] = 1 * playerDino.isJumping
+    state['is_ducked'] = 1 * playerDino.isDucking
+
+    return state
 
 def load_image(
     name,
@@ -376,7 +408,7 @@ def gameplay():
     cacti = pygame.sprite.Group()
     pteras = pygame.sprite.Group()
     clouds = pygame.sprite.Group()
-    last_obstacle = pygame.sprite.Group()
+    last_obstacle = pygame.sprite.Group() #this group always contains just one sprite
 
     Cactus.containers = cacti
     Ptera.containers = pteras
@@ -426,7 +458,7 @@ def gameplay():
                         if event.key == pygame.K_DOWN:
                             playerDino.isDucking = False
 # Now we establish the obstacles. If they hit one, the dino's state changes
-# to dead. It populates the game with a random amount of cacti and pteras.
+# to dead. It populates the game with semi-random cacti and pteras.
 
             for c in cacti:
                 c.movement[0] = -1*gamespeed
@@ -457,6 +489,8 @@ def gameplay():
                     if l.rect.right < width*0.8:
                         last_obstacle.empty()
                         last_obstacle.add(Ptera(gamespeed, 46, 40))
+
+            print(get_state(playerDino, cacti, pteras))
 
             if len(clouds) < 5 and random.randrange(0,300) == 10:
                 Cloud(width,random.randrange(height/5,height/2))

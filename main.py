@@ -62,6 +62,44 @@ def get_state(playerDino, cacti, pteras):
 
     return state
 
+
+def get_bin(state, cacti):
+
+#This is incomplete
+    '''
+    Simplified version:
+    Subdivide the distance to Cactus0 into five bins (store the label in bin[0])
+    Subdivide the distance to Cactus1 into five bins (store the label in bin[1])
+    Don't know yet the right bounds yet (below are guesses!)
+    The too far bins are to minimize the jumps if we penalize unnecessay jumps
+    0  is reserved for absence of a cactus
+    -1 is reserved if the dino already passed a cactus
+    We can do the most simplified version instead: having only one cactus
+    '''
+    bin = [0 , 0]
+
+    # Need to figure out these
+    cl = 10
+    r = 30
+    f1 = 300
+    f2 = 600
+
+    if len(cacti) != 0:
+        for c, cactus in enumerate(cacti): # not sure how 'c' works
+            if (state['cact_{}_dist'.format(c)] > 0 and state['cact_{}_dist'.format(c)] < cl):
+                bin[c-1] = 1
+            elif  (state['cact_{}_dist'.format(c)] >= cl and state['cact_{}_dist'.format(c)] < r):
+                bin[c-1] = 2
+            elif  (state['cact_{}_dist'.format(c)] >= r and state['cact_{}_dist'.format(c)] < f1):
+                bin[c-1] = 3
+            elif  (state['cact_{}_dist'.format(c)] >= f1 and state['cact_{}_dist'.format(c)] <= f2):
+                bin[c-1] = 4
+            else:
+                bin[c-1] = -1
+
+    return bin
+
+
 def load_image(
     name,
     sizex=-1,

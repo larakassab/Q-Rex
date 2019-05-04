@@ -18,17 +18,16 @@ class Qtable():
     '''
     def __init__(self):
         #(first cactus bin, second cactus bin, is_airborne, possible actions)
-        self.table = np.full((13,13,2,2), np.inf)
+        self.table = np.ones((13,13,2,2))
         self.rho = 0.2
 
-    def update(self, state, action, stateOld, actionOld):
+    def update(self, state, action, stateOld, actionOld, reinforcement):
         '''
         action and actionOld are indices for the action dimension of the Q-table
         '''
-        r = 1
         Qold = self.table[stateOld[0], stateOld[1], stateOld[2], actionOld]
         Qnew = self.table[state[0], state[1], state[2], action]
-        TDError = r + Qnew - Qold
+        TDError = reinforcement + Qnew - Qold
         self.table[stateOld[0], stateOld[1], stateOld[2], actionOld] = Qold + self.rho * TDError
 
         return self.table
@@ -42,7 +41,7 @@ class Agent():
         self.lr = lr
         self.discount = discount
         self.reward = 0
-        self.poss_actions = ['no_action', pygame.K_SPACE]
+        self.poss_actions = [0,pygame.K_SPACE]
         self.playerDino = playerDino
 
     # def get_action(self):
@@ -56,16 +55,17 @@ class Agent():
     #
     #     return action
 
-    def get_action(self, Qtable, state):
+    def get_action(self, epsilon, playerDino, cacti, Qtable, state):
         '''
         checks Qtable and decides whether or not to jump.
         '''
-        state = get_state(playerDino, cacti)
         poss_actions = Qtable.table[state[0],state[1],state[2], :]
-        action_idx = np.argmax(poss_actions, axis = 4)
-        action = self.poss_actions[action_idx]
+        if np.random.uniform() < epsilon:
+            action_idx = random.choice((0,1)) #add 3 to set for pteras
+        else:
+            action_idx = np.argmax(poss_actions)
 
-        return action
+        return action_idx
 
     def get_reward(self):
         return self.playerDino.score
@@ -113,6 +113,7 @@ white = (255,255,255)
 background_col = (235,235,235)
 
 high_score = 0
+epoch = 0
 
 screen = pygame.display.set_mode(scr_size)
 clock = pygame.time.Clock()
@@ -430,6 +431,7 @@ def introscreen():
 # game screen.
 def gameplay(learn = False):
     global high_score
+    global epoch
     gamespeed = 4
     startMenu = False
     gameOver = False
@@ -437,6 +439,7 @@ def gameplay(learn = False):
     playerDino = Dino(44,47)
     agent = Agent(playerDino)
     Q = Qtable()
+    epsilon = 0.8
     new_ground = Ground(-1*gamespeed)
     scb = Scoreboard()
     highsc = Scoreboard(width*0.78)
@@ -478,9 +481,9 @@ def gameplay(learn = False):
                         gameOver = True
 
                 stateOld = get_state(playerDino, cacti)
-                actionOld = agent.get_action(Qtable, stateOld)
+                actionOld = agent.get_action(epsilon, playerDino, cacti, Q, stateOld)
 
-                if current_action == pygame.K_SPACE:
+                if agent.poss_actions[actionOld] == pygame.K_SPACE:
                     if playerDino.rect.bottom == int(0.98*height):
                         playerDino.isJumping = True
                         if pygame.mixer.get_init() != None:
@@ -532,12 +535,12 @@ def gameplay(learn = False):
             playerDino.update()
             cacti.update()
             state = get_state(playerDino, cacti)
-            action = agent.get_action(Qtable, state)
+            action = agent.get_action(epsilon, playerDino, cacti, Q, state)
             clouds.update()
             new_ground.update()
             scb.update(playerDino.score)
             highsc.update(high_score)
-            Q.update(state, action, stateOld, actionOld)
+            Q.update(state, action, stateOld, actionOld, agent.get_reward())
 
             if pygame.display.get_surface() != None:
                 screen.fill(background_col)
@@ -555,6 +558,7 @@ def gameplay(learn = False):
 # Checks if you died.
             if playerDino.isDead:
                 gameOver = True
+                epoch += 1
                 if playerDino.score > high_score:
                     high_score = playerDino.score
 # If you didn't, after a certain point, it increases speed
@@ -563,7 +567,7 @@ def gameplay(learn = False):
                 gamespeed += 1
 
             counter = (counter + 1)
-
+            epsilon = epsilon/(1+(np.sqrt(epoch) / 100))
         if gameQuit:
             break
 # End credit stuff.

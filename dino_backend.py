@@ -4,66 +4,9 @@ import os
 import sys
 import pygame
 import random
-import time
 from pygame import *
-
-"""
-This is the Q-Learning Portion of the code.
-"""
-
-class Qtable():
-    '''
-    This class holds the Qtable object and functions to update it
-    '''
-    def __init__(self):
-        #(first cactus bin, second cactus bin, is_airborne, possible actions)
-        self.table = np.zeros((13,13,2,2))
-
-    def update(self):
-        pass
-
-class Agent():
-    '''
-    This class holds the agent and allows it to perform actions
-    '''
-    def __init__(self, policy = 0.25, lr = 0.5, discount = 0.2):
-        self.policy = policy
-        self.lr = lr
-        self.discount = discount
-        self.reward = 0
-    #def get_action(self, Qtable)
-    def get_action(self):
-        '''
-        returns a number corresponding to SPACE KEY or NOTHING
-        '''
-        # pygame.K_SPACE = 32
-        pygame.KEYDOWN
-
-        return 32
-
-
-
-
-
-def get_state(playerDino, cacti):
-    '''
-    Compiles state information needed to make computations
-    Input: Dino Sprite rect, cacti sprite group
-    Output: vector/list/dict (need to pick one) that holds state information
-    Regardless of datatype, state has the following format:
-    [is_airborne (binary),
-    is_ducked (binary),
-    distance to nearest cactus,
-    distance to second nearest cactus]
-    '''
-    state = {'cact_0_dist' : 10, 'cact_1_dist' : 10} #init state as a dictionary
-    if len(cacti) != 0:
-        for c, cactus in enumerate(cacti):
-            # the -1 value below could also be set to 0. Some testing is required
-            state['cact_{}_dist'.format(c)] = max(-1,(cactus.rect.left - playerDino.rect.right)//50)
-    state['is_airborne'] = 1 * playerDino.isJumping
-
-    return state
+import pyautogui as pag
+import numpy as np
 
 pygame.init()
 # Sets screen dimensions, colors, sounds, and images.
@@ -71,6 +14,8 @@ pygame.init()
 scr_size = (width,height) = (600,150)
 FPS = 60
 gravity = 0.6
+
+pag.PAUSE = 0
 
 black = (0,0,0)
 white = (255,255,255)
@@ -85,6 +30,9 @@ pygame.display.set_caption("T-Rex Rush")
 jump_sound = pygame.mixer.Sound('sprites/jump.wav')
 die_sound = pygame.mixer.Sound('sprites/die.wav')
 checkPoint_sound = pygame.mixer.Sound('sprites/checkPoint.wav')
+
+# Next, it pulls the sprites to be able to construct the image
+# we see on screen.
 
 def load_image(
     name,
@@ -197,6 +145,14 @@ class Dino():
 
         self.stand_pos_width = self.rect.width
         self.duck_pos_width = self.rect1.width
+    
+    def jump(self):
+        if self.rect.bottom == int(0.98*height):
+            self.isJumping = True
+            if pygame.mixer.get_init() != None:
+                jump_sound.play()
+            self.movement[1] = -1*self.jumpSpeed
+        
 
 # Next it draws itself, checks its boundary, defines how to jump, and defines
 # how to duck. Finally it checks if its dead. If it isn't, it increases the score.
@@ -266,11 +222,11 @@ class Cactus(pygame.sprite.Sprite):
 
     def update(self):
         self.rect = self.rect.move(self.movement)
+        self.dino_distance = self.rect.left - 84
 
         if self.rect.right < 0:
             self.kill()
-
-
+            
 # Yo, this defines the ground, image-wise and movement-wise.
 class Ground():
     def __init__(self,speed=-5):
@@ -343,11 +299,10 @@ class Scoreboard():
 """This defines the intro screen. It has some backup messages if the game
 won't load. Next, it defines the keys that make the dino jump and duck.
 Finally, this part starts the game when you press jump!"""
-
-def introscreen():
+def introscreen(game_start):
     temp_dino = Dino(44,47)
     temp_dino.isBlinking = True
-    gameStart = False
+    gameStart = game_start
 
     callout,callout_rect = load_image('call_out.png',196,45,-1)
     callout_rect.left = width*0.05
@@ -392,22 +347,35 @@ def introscreen():
 # Now we get to the meat of the game. It establishes the placement of the Dino,
 # the movement of the ground, and all of the obstacles. Next it establishes the
 # game screen.
-def gameplay(learn = False):
+
+playerDino = Dino(44,47)
+gameOver = False
+gameQuit = False
+cacti = pygame.sprite.Group()
+t = 0
+
+
+def gameplay(agent):
     global high_score
+    global playerDino
+    global gameOver
+    global gameQuit
+    global t
     gamespeed = 4
     startMenu = False
-    gameOver = False
-    gameQuit = False
-    playerDino = Dino(44,47)
-    agent = Agent()
     new_ground = Ground(-1*gamespeed)
     scb = Scoreboard()
     highsc = Scoreboard(width*0.78)
     counter = 0
+    state = GameState
+    cacti_jumped = 0
+    is_falling = False
+    survived = 0
+    state_value = 0
 
-    cacti = pygame.sprite.Group()
+    global cacti
     clouds = pygame.sprite.Group()
-    last_obstacle = pygame.sprite.Group() #this group always contains just one sprite
+    last_obstacle = pygame.sprite.Group()
 
     Cactus.containers = cacti
     Cloud.containers = clouds
@@ -425,7 +393,7 @@ def gameplay(learn = False):
     HI_rect.top = height*0.1
     HI_rect.left = width*0.73
 
-# THIS IS THE MAIN GAME LOOP
+# Here, the code is for establishing jumping and ducking for the dino.
     while not gameQuit:
         while startMenu:
             pass
@@ -441,30 +409,37 @@ def gameplay(learn = False):
                         gameOver = True
 
                     if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_SPACE or agent.get_action() == pygame.K_SPACE:
-                            if playerDino.rect.bottom == int(0.98*height):
-                                playerDino.isJumping = True
-                                if pygame.mixer.get_init() != None:
-                                    jump_sound.play()
-                                playerDino.movement[1] = -1*playerDino.jumpSpeed
+                        if event.key == pygame.K_SPACE:
+                            playerDino.jump()
+                            
+                        # if event.key == pygame.K_r:
+                        #     gameplay(agent)
+                        
+                        if event.key == pygame.K_ESCAPE:
+                            gameOver = True
+                            gameQuit = True
 
-                        if event.key == pygame.K_DOWN:
-                            if not (playerDino.isJumping and playerDino.isDead):
-                                playerDino.isDucking = True
-
-                    if event.type == pygame.KEYUP:
-                        if event.key == pygame.K_DOWN:
-                            playerDino.isDucking = False
 # Now we establish the obstacles. If they hit one, the dino's state changes
-# to dead. It populates the game with semi-random cacti.
-
+# to dead. It populates the game with a random amount of cacti and pteras.
+            temp = (epsilon/(1+(np.sqrt(t)/100)))
+            if temp > epsilon_final:
+                agent.take_action(epsilon, state, playerDino.isJumping, state_value, t)
+            else: 
+                agent.act_with_best_q(state_value)
+            # agent.act_with_best_q(state_value)
+            # print(temp)
             for c in cacti:
                 c.movement[0] = -1*gamespeed
+                # if c.dino_distance/gamespeed < 10 and c.dino_distance >0 and playerDino.isJumping != True:
+                #     agent.press_jump()
+                    
+                    
                 if pygame.sprite.collide_mask(playerDino,c):
                     playerDino.isDead = True
                     if pygame.mixer.get_init() != None:
                         die_sound.play()
-
+                        
+            num_cacti_0 = len(cacti)
 
             if len(cacti) < 2:
                 if len(cacti) == 0:
@@ -475,20 +450,36 @@ def gameplay(learn = False):
                         if l.rect.right < width*0.7 and random.randrange(0,50) == 10:
                             last_obstacle.empty()
                             last_obstacle.add(Cactus(gamespeed, 40, 40))
-
-
-            # THIS PRINTS THE CURRENT STATE
-            print(get_state(playerDino, cacti))
-
+                            
             if len(clouds) < 5 and random.randrange(0,300) == 10:
-                Cloud(width,random.randrange(height/5, height/2))
+                Cloud(width,random.randrange(height/5,height/2))
+            
+             
 # After this, it updates all of the states and draws the next screen.
+            prev_height = playerDino.rect.bottom
             playerDino.update()
+            cur_height = playerDino.rect.bottom
+            if prev_height < cur_height: isfalling = True
+            else: isfalling = False
             cacti.update()
+            # pteras.update()
             clouds.update()
             new_ground.update()
-            scb.update(playerDino.score)
+            # scb.update(playerDino.score)
+            scb.update(int(1000*epsilon/(1+(t/100))))
             highsc.update(high_score)
+            t+=1
+            
+            ### Cactus jumping
+            
+            ### Figure out if we have jumped over a cactus previously
+            num_cacti_1 = len(cacti)
+            # if num_cacti_0 - num_cacti_1 > 0:
+            #     survived = True
+            survived = num_cacti_0 - num_cacti_1
+            cacti_jumped += survived
+            
+            
 
             if pygame.display.get_surface() != None:
                 screen.fill(background_col)
@@ -499,6 +490,7 @@ def gameplay(learn = False):
                     highsc.draw()
                     screen.blit(HI_image,HI_rect)
                 cacti.draw(screen)
+                # pteras.draw(screen)
                 playerDino.draw()
 
                 pygame.display.update()
@@ -506,6 +498,7 @@ def gameplay(learn = False):
 # Checks if you died.
             if playerDino.isDead:
                 gameOver = True
+                agent_scores.append(playerDino.score)
                 if playerDino.score > high_score:
                     high_score = playerDino.score
 # If you didn't, after a certain point, it increases speed
@@ -514,6 +507,11 @@ def gameplay(learn = False):
                 gamespeed += 1
 
             counter = (counter + 1)
+            
+            ### Get state for learning on next frame
+            state.update(state, playerDino.rect.bottom, cacti, gamespeed, gameOver, isfalling)
+            state_value = state.return_bool_state(state, playerDino.isJumping)
+            ### IF gameOver then we need to store the current game's information?
 
         if gameQuit:
             break
@@ -525,19 +523,15 @@ def gameplay(learn = False):
                 gameQuit = True
                 gameOver = False
             else:
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        gameQuit = True
-                        gameOver = False
-                    if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_ESCAPE:
-                            gameQuit = True
-                            gameOver = False
-
-
-                        if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                            gameOver = False
-                            gameplay()
+                #here can use game state to update what we need
+                #right now just auto restart for more practice
+                state.restart()
+                playerDino = Dino(44,47)
+                gameOver = False
+                gameQuit = False
+                cacti = pygame.sprite.Group()
+                gameplay(agent)
+                
             highsc.update(high_score)
             if pygame.display.get_surface() != None:
                 disp_gameOver_msg(retbutton_image,gameover_image)
@@ -550,9 +544,126 @@ def gameplay(learn = False):
     pygame.quit()
     quit()
 
-def main():
-    isGameQuit = introscreen()
-    if not isGameQuit:
-        gameplay(learn = True)
+reward = np.matrix([[1, -1],
+                    [1, -1],
+                    [-1, 1],
+                    [1, -1]])
+                    
+Q = np.zeros(reward.shape)  
 
-main()
+trained_Q = np.array([[ 0.10869565, -0.09130435],
+       [ 0.10869565, -0.09130435],
+       [-0.09130435,  0.10869565],
+       [ 0.10869565, -0.09130435]])
+
+epsilon = .05
+epsilon_final = 1.032
+alpha = .1
+gamma = 0.8
+agent_scores = []
+
+class Game:
+    def __init__(self):
+        self.isGameQuit = None
+   
+    def main(agent, start):
+        isGameQuit = introscreen(start)
+        if not isGameQuit:
+            gameplay(agent)
+            
+
+class GameState:
+    def __init__(self, agent):
+        self.agent = agent
+        self.bottom = 147
+        self.isfalling = False
+        self.nearest = 600
+        self.isdead = False
+        
+    def restart():
+        #may want something more here to dump replay experience or q-table updates
+        #can add a bool that says if we are training or not to initiate or not allow restarts
+        pag.press("enter")
+        
+    def update(self, vertical, cacti, gamespeed, gameover, isfalling):
+        self.isfalling = isfalling
+        self.bottom = vertical
+        self.isdead = gameover
+        self.nearest = 600
+        self.second_cactus = 1200
+        for c in cacti:
+            if c.dino_distance > 0 and int(c.dino_distance/gamespeed) < self.nearest:
+                self.second_cactus = self.nearest
+                self.nearest = int(c.dino_distance/gamespeed)
+        # print(self.nearest)
+        # print(self.s    qecond_cactus)        
+                
+    def return_bool_state (self, isjumping):
+        tracking = 0
+        if self.nearest < 17: tracking +=2
+        if isjumping == True: tracking +=1
+        return tracking
+    
+    def get_next_state(self, DinoCopy):
+        DinoCopy.update()
+        tracking = 0
+        if self.nearest-1 < 17: tracking +=2
+        if DinoCopy.isjumping == True: tracking +=1
+        return tracking
+          
+    
+    # def get_state(self, actions):
+    #     agent.available actions
+        
+    # sits inside game updates on each frame, talks to agent to find what to do and
+    # maybe can make a similarity case function
+
+class Agent:
+    def __init__(self, game):
+        self.game = game
+        self.actions = [0,1]
+        self.action_idx = 0
+        self.new_state_value = 0
+        
+        self.game.main(self, True)
+        
+        
+    def press_jump(self):
+        pag.press("space")
+        
+    def get_actions(self, state):
+        if state.bottom == 147: return [0,1]
+        else: return [0]
+        
+    def take_action(self, epsilon, state, isjumping, state_value, t):
+        if random.random() <= (epsilon/(1+(np.sqrt(t)/100))):
+            self.action_idx = np.random.choice(self.actions)
+            if self.action_idx == 1: 
+                self.press_jump()
+                self.new_state_value = state.return_bool_state(state, isjumping)
+            # else: self.new_state_value = state_value
+        else:
+            self.action_idx = np.where(Q[state_value,] == np.max(Q[state_value,]))[0][0]
+            if self.action_idx > 1: 
+                self.press_jump()
+                self.new_state_value = state.return_bool_state(state, isjumping)
+            # else: self.new_state_value = state_value
+        
+        
+        Q[state_value, self.action_idx] += alpha * (reward[state_value, self.action_idx] 
+                    + gamma*(np.max(Q[self.new_state_value,:])) 
+                    + gamma*0)-Q[state_value, self.action_idx]
+        
+        
+    def act_with_best_q(self, state_value):
+        self.action_idx = np.where(trained_Q[state_value,] == np.max(trained_Q[state_value,]))[0][0]
+        # self.action_idx = np.where(Q[state_value,] == np.max(Q[state_value,]))[0][0]
+        if self.action_idx == 1: self.press_jump()
+        
+        
+#height > cactus then reward if cactus is under
+#reward is +num cacti jumped, +.1 for each frame, -100 for dying?
+
+game = Game
+agent = Agent(game)
+print(agent_scores)  

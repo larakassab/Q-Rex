@@ -21,10 +21,10 @@ def get_state(playerDino, cacti, pteras):
 
     if len(cacti) != 0:
         for c, cactus in enumerate(cacti):
-            state['cact_{}_dist'.format(c)] = cactus.rect.left - playerDino.rect.right
+            state['cact_{}_dist'.format(c)] = (cactus.rect.left - playerDino.rect.right)//50
     if len(pteras) != 0:
         for d, dactyl in enumerate(pteras):
-            state['ptera_dist'] = dactyl.rect.left - playerDino.rect.right
+            state['ptera_dist'] = (dactyl.rect.left - playerDino.rect.right)//50
 
     state['is_airborne'] = 1 * playerDino.isJumping
     state['is_ducked'] = 1 * playerDino.isDucking
